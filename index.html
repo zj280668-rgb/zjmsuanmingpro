@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>豆豆图纸 · 拼豆图案生成器</title>
+<style>
+/* ====================================================================
+ * 全局 — 黑色背景让图纸更突出
+ * ==================================================================== */
+:root {
+  --coral: #FF6B4A; --coral-dark: #E55A3A;
+  --dark: #1A1A1A; --gray: #999; --white: #FFF;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  background:#1C1C1E;color:var(--white);min-height:100vh;
+  -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;
+  display:flex;flex-direction:column;align-items:center;
+}
+
+/* ====================================================================
+ * 顶部工具栏（极简）
+ * ==================================================================== */
+.toolbar{
+  width:100%;max-width:700px;display:flex;align-items:center;gap:12px;
+  padding:12px 16px;position:sticky;top:0;z-index:10;
+  background:rgba(28,28,30,0.92);backdrop-filter:blur(12px);
+}
+.toolbar-title{font-size:18px;font-weight:700;flex:1}
+.toolbar-actions{display:flex;gap:6px}
+.tb-btn{
+  width:36px;height:36px;border-radius:10px;border:none;
+  background:rgba(255,255,255,0.1);color:var(--white);
+  font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background 0.15s;
+}
+.tb-btn:hover{background:rgba(255,255,255,0.18)}
+.tb-btn.active{background:var(--coral)}
+
+/* ====================================================================
+ * 主画布区 — 占满整屏
+ * ==================================================================== */
+.canvas-stage{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  padding:8px;width:100%;max-width:700px;
+}
+.canvas-stage canvas{
+  display:block;max-width:100%;max-height:calc(100vh - 200px);
+  border-radius:6px;
+  box-shadow:0 0 0 1px rgba(255,255,255,0.06),0 8px 32px rgba(0,0,0,0.5);
+  image-rendering:pixelated; /* 像素风格 */
+}
+
+/* ====================================================================
+ * 空状态 — 上传引导
+ * ==================================================================== */
+.empty-state{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:16px;padding:40px;
+  text-align:center;max-width:400px;
+}
+.empty-icon{font-size:64px;margin-bottom:8px}
+.empty-title{font-size:24px;font-weight:700}
+.empty-desc{font-size:14px;color:var(--gray);line-height:1.6}
+.upload-btn{
+  display:flex;align-items:center;gap:8px;padding:14px 32px;
+  border-radius:14px;border:none;background:var(--coral);color:var(--white);
+  font-size:16px;font-weight:700;cursor:pointer;margin-top:12px;
+  transition:all 0.15s;
+}
+.upload-btn:hover{background:var(--coral-dark);transform:translateY(-1px)}
+.upload-btn:active{transform:scale(0.97)}
+
+/* 拖拽区 */
+.drop-zone{
+  border:2px dashed rgba(255,255,255,0.2);border-radius:16px;
+  padding:40px 24px;text-align:center;cursor:pointer;transition:all 0.2s;
+  width:100%;max-width:360px;
+}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--coral);background:rgba(255,107,74,0.06)}
+.drop-zone img{max-width:100%;max-height:200px;border-radius:10px;display:block;margin:0 auto}
+
+/* ====================================================================
+ * 底部统计条（紧凑横向条形图）
+ * ==================================================================== */
+.stats-strip{
+  width:100%;max-width:700px;padding:10px 16px;
+  display:flex;gap:4px;flex-wrap:wrap;justify-content:center;
+  background:rgba(28,28,30,0.92);backdrop-filter:blur(12px);
+  position:sticky;bottom:0;
+}
+.stat-chip{
+  display:flex;align-items:center;gap:5px;padding:6px 10px;
+  border-radius:8px;background:rgba(255,255,255,0.06);
+  font-size:11px;cursor:default;white-space:nowrap;
+}
+.stat-chip .dot{
+  width:10px;height:10px;border-radius:3px;flex-shrink:0;
+}
+.stat-chip .count{font-weight:700;color:var(--coral);margin-left:2px}
+
+/* ====================================================================
+ * 底部参数栏
+ * ==================================================================== */
+.param-strip{
+  width:100%;max-width:700px;display:flex;align-items:center;
+  gap:6px;padding:10px 16px;
+  border-top:1px solid rgba(255,255,255,0.06);
+  background:rgba(28,28,30,0.92);
+}
+.param-strip select,.param-strip input{
+  padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);
+  background:rgba(255,255,255,0.06);color:var(--white);font-size:13px;
+  outline:none;text-align:center;
+}
+.param-strip select{min-width:90px}
+.param-strip input{width:60px}
+.param-strip .spacer{flex:1}
+.param-strip .act-btn{
+  padding:8px 16px;border-radius:8px;border:none;font-size:13px;font-weight:600;
+  cursor:pointer;transition:all 0.15s;color:var(--white);
+}
+.act-btn.primary{background:var(--coral)}
+.act-btn.primary:hover{background:var(--coral-dark)}
+.act-btn.secondary{background:rgba(255,255,255,0.1)}
+.act-btn.secondary:hover{background:rgba(255,255,255,0.18)}
+.act-btn:disabled{opacity:0.35;cursor:not-allowed}
+.act-btn:active{transform:scale(0.96)}
+
+/* ====================================================================
+ * 下载弹窗
+ * ==================================================================== */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;
+  display:flex;align-items:center;justify-content:center;
+}
+.modal{
+  background:#2C2C2E;border-radius:20px;padding:28px 24px;
+  max-width:340px;width:90%;text-align:center;
+}
+.modal h3{font-size:18px;margin-bottom:8px}
+.modal p{font-size:14px;color:var(--gray);margin-bottom:20px;line-height:1.5}
+.modal .preview{max-width:100%;border-radius:10px;margin-bottom:16px;box-shadow:0 2px 12px rgba(0,0,0,0.4)}
+.modal .btns{display:flex;gap:10px}
+.modal .btns button{
+  flex:1;padding:12px;border-radius:12px;border:none;font-size:14px;
+  font-weight:600;cursor:pointer;transition:all 0.15s;
+}
+.modal .btns .btn-save{background:var(--coral);color:var(--white)}
+.modal .btns .btn-save:hover{background:var(--coral-dark)}
+.modal .btns .btn-cancel{background:rgba(255,255,255,0.1);color:var(--white)}
+.modal .btns .btn-cancel:hover{background:rgba(255,255,255,0.18)}
+
+/* ====================================================================
+ * Toast
+ * ==================================================================== */
+.toast{
+  position:fixed;top:60px;left:50%;transform:translateX(-50%);
+  padding:10px 22px;background:rgba(255,255,255,0.15);
+  backdrop-filter:blur(20px);color:var(--white);border-radius:20px;
+  font-size:13px;z-index:200;pointer-events:none;
+  opacity:0;transition:opacity 0.3s;
+}
+.toast.show{opacity:1}
+
+.hidden{display:none!important}
+#fileInput,#cameraInput{display:none}
+</style>
+</head>
+<body>
+
+<!-- 顶部工具栏 -->
+<div class="toolbar">
+  <span class="toolbar-title">🧶 豆豆图纸</span>
+  <div class="toolbar-actions">
+    <button class="tb-btn" id="btnUpload" title="上传图片">📷</button>
+    <button class="tb-btn" id="btnCamera" title="拍照">📸</button>
+    <button class="tb-btn" id="btnGrid29" data-size="29">29</button>
+    <button class="tb-btn active" id="btnGrid58" data-size="58">58</button>
+    <button class="tb-btn" id="btnGrid72" data-size="72">72</button>
+    <button class="tb-btn" id="btnPalette" title="切换色板">🎨</button>
+    <button class="tb-btn" id="btnSave" title="保存图片" disabled>💾</button>
+  </div>
+</div>
+
+<!-- 空状态 -->
+<div class="empty-state" id="emptyState">
+  <span class="empty-icon">🧩</span>
+  <span class="empty-title">生成你的拼豆图纸</span>
+  <span class="empty-desc">上传一张照片，自动匹配最接近的拼豆颜色，生成带编号的网格图纸</span>
+  <div class="drop-zone" id="dropZone">
+    <span style="font-size:36px;display:block;margin-bottom:8px">📁</span>
+    <span style="font-size:14px;color:var(--gray)">点击或拖拽图片到此处<br><strong style="color:var(--coral)">JPG / PNG / WebP</strong></span>
+    <img id="previewThumb" style="display:none">
+  </div>
+  <button class="upload-btn" id="btnStartUpload">📷 选择图片</button>
+</div>
+
+<!-- 图纸画布 -->
+<div class="canvas-stage hidden" id="canvasStage">
+  <canvas id="mainCanvas"></canvas>
+</div>
+
+<!-- 底部统计 -->
+<div class="stats-strip hidden" id="statsStrip"></div>
+
+<!-- 底部参数 -->
+<div class="param-strip">
+  <span style="font-size:12px;color:var(--gray);white-space:nowrap">网格</span>
+  <select id="gridSelect">
+    <option value="29">29×29</option>
+    <option value="49">49×49</option>
+    <option value="58" selected>58×58</option>
+    <option value="72">72×72</option>
+    <option value="custom">自定义</option>
+  </select>
+  <input type="number" id="customGridInput" value="40" min="10" max="120" disabled placeholder="N">
+  <span style="font-size:12px;color:var(--gray);white-space:nowrap;margin-left:4px">色板</span>
+  <select id="paletteSelect">
+    <option value="full">全色板100色</option>
+    <option value="perler">Perler 55色</option>
+  </select>
+  <span class="spacer"></span>
+  <button class="act-btn secondary" id="btnRegenerate" disabled>🔄 重新生成</button>
+</div>
+
+<input type="file" id="fileInput" accept="image/*">
+<input type="file" id="cameraInput" accept="image/*" capture="environment">
+
+<!-- 下载弹窗 -->
+<div class="modal-overlay hidden" id="saveModal">
+  <div class="modal">
+    <h3>💾 保存图纸</h3>
+    <p id="saveInfo"></p>
+    <canvas id="savePreview" class="preview" style="max-width:100%;border-radius:10px"></canvas>
+    <div class="btns">
+      <button class="btn-cancel" id="btnCancelSave">关闭</button>
+      <button class="btn-save" id="btnConfirmSave">保存到相册</button>
+    </div>
+    <p style="font-size:11px;color:var(--gray);margin-top:10px">💡 也可以点「查看大图」长按保存</p>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================================
+// 色板数据：100 色（Lab 预计算）
+// ============================================================================
+const FULL_PALETTE = [
+  {id:'P01',name:'纯白',    rgb:[255,255,255],lab:[100,0,0]},
+  {id:'P02',name:'米白',    rgb:[255,253,228],lab:[98.87,-3.49,12.21]},
+  {id:'P03',name:'浅黄',    rgb:[255,255,153],lab:[98.07,-14.23,48.66]},
+  {id:'P04',name:'明黄',    rgb:[255,204,0],  lab:[84.2,3.68,85.22]},
+  {id:'P05',name:'切达黄',  rgb:[255,160,0],  lab:[73.81,26.54,78.22]},
+  {id:'P06',name:'奶油糖',  rgb:[210,150,39], lab:[66.26,13.29,62.45]},
+  {id:'P07',name:'蜜桃',    rgb:[255,204,153],lab:[85.38,11.5,32.27]},
+  {id:'P08',name:'浅粉',    rgb:[255,182,193],lab:[81.05,27.96,5.04]},
+  {id:'P09',name:'泡泡糖粉',rgb:[255,105,180],lab:[65.49,64.24,-10.65]},
+  {id:'P10',name:'珊瑚红',  rgb:[255,80,60],  lab:[59.28,65.02,48.98]},
+  {id:'P11',name:'正红',    rgb:[237,28,36],  lab:[50.65,73.35,51.61]},
+  {id:'P12',name:'覆盆子',  rgb:[199,21,133], lab:[44.77,70.99,-15.17]},
+  {id:'P13',name:'品红',    rgb:[255,0,255],  lab:[60.32,98.23,-60.82]},
+  {id:'P14',name:'李子紫',  rgb:[102,0,102],  lab:[22.95,50.13,-31.04]},
+  {id:'P15',name:'深紫',    rgb:[128,0,128],  lab:[29.78,58.93,-36.49]},
+  {id:'P16',name:'薰衣草浅',rgb:[200,162,200],lab:[71.07,20.54,-14.13]},
+  {id:'P17',name:'浅蓝',    rgb:[173,216,230],lab:[83.81,-10.89,-11.48]},
+  {id:'P18',name:'钴蓝',    rgb:[0,71,171],   lab:[32.8,22.52,-58.44]},
+  {id:'P19',name:'薄荷绿',  rgb:[0,255,197],  lab:[89.65,-63.29,13.77]},
+  {id:'P20',name:'青绿',    rgb:[64,224,208], lab:[81.26,-44.08,-4.03]},
+  {id:'P21',name:'浅绿',    rgb:[144,238,144],lab:[86.55,-46.33,36.95]},
+  {id:'P22',name:'奇异果绿',rgb:[50,205,50],  lab:[72.61,-67.13,61.44]},
+  {id:'P23',name:'深绿',    rgb:[0,100,0],    lab:[36.2,-43.37,41.86]},
+  {id:'P24',name:'仙人掌绿',rgb:[127,200,0],  lab:[73.43,-47.29,72.96]},
+  {id:'P25',name:'浅棕',    rgb:[205,133,63], lab:[61.75,21.4,47.92]},
+  {id:'P26',name:'卡其',    rgb:[210,180,140],lab:[74.98,5.02,24.43]},
+  {id:'P27',name:'沙色',    rgb:[194,178,128],lab:[72.81,-1.75,27.68]},
+  {id:'P28',name:'棕色',    rgb:[160,82,45],  lab:[43.8,29.32,35.64]},
+  {id:'P29',name:'姜饼色',  rgb:[180,95,50],  lab:[49.64,30.85,40.26]},
+  {id:'P30',name:'深棕',    rgb:[101,67,33],  lab:[31.56,10.88,26.19]},
+  {id:'P31',name:'纯黑',    rgb:[0,0,0],      lab:[0,0,0]},
+  {id:'P32',name:'灰色',    rgb:[128,128,128],lab:[53.59,0,0]},
+  {id:'P33',name:'银色',    rgb:[192,192,192],lab:[77.7,0,0]},
+  {id:'P34',name:'深灰',    rgb:[64,64,64],   lab:[27.09,0,0]},
+  {id:'P35',name:'炭灰',    rgb:[54,69,79],   lab:[28.39,-3.25,-7.96]},
+  {id:'P36',name:'透明',    rgb:[240,248,255],lab:[97.18,-1.35,-4.26]},
+  {id:'P37',name:'荧光粉',  rgb:[255,20,147], lab:[55.96,84.54,-5.7]},
+  {id:'P38',name:'荧光橙',  rgb:[255,69,0],   lab:[57.58,67.78,68.96]},
+  {id:'P39',name:'荧光黄',  rgb:[223,255,0],  lab:[94.83,-34.51,91.73]},
+  {id:'P40',name:'荧光绿',  rgb:[57,255,20],  lab:[88.18,-82.09,81.99]},
+  {id:'P41',name:'天蓝',    rgb:[135,206,235],lab:[79.21,-14.84,-21.28]},
+  {id:'P42',name:'牛仔蓝',  rgb:[30,100,190], lab:[42.92,12.47,-53.2]},
+  {id:'P43',name:'紫罗兰',  rgb:[143,0,255],  lab:[42.85,84.37,-90.02]},
+  {id:'P44',name:'亮紫',    rgb:[186,85,211], lab:[53.64,59.06,-47.4]},
+  {id:'P45',name:'蔓越莓',  rgb:[173,0,57],   lab:[36.33,61.42,20.09]},
+  {id:'P46',name:'红褐',    rgb:[165,42,42],  lab:[37.53,49.69,30.54]},
+  {id:'P47',name:'金色',    rgb:[212,175,55], lab:[72.85,1.38,62.91]},
+  {id:'P48',name:'象牙白',  rgb:[255,248,220],lab:[97.46,-2.22,14.29]},
+  {id:'P49',name:'薄荷浅',  rgb:[152,255,152],lab:[91.89,-49.98,40.01]},
+  {id:'P50',name:'桃红',    rgb:[255,128,128],lab:[68.21,48.19,22.7]},
+  {id:'P51',name:'橙黄',    rgb:[255,180,0],  lab:[78.41,16.11,81.25]},
+  {id:'P52',name:'墨绿',    rgb:[0,80,50],    lab:[29.33,-29.93,11.74]},
+  {id:'P53',name:'海军蓝',  rgb:[0,0,80],     lab:[5.23,32.43,-45.83]},
+  {id:'P54',name:'淡紫',    rgb:[230,190,255],lab:[82.31,25.83,-26.64]},
+  {id:'P55',name:'肤色',    rgb:[255,219,185],lab:[89.59,7.57,21.36]},
+  {id:'P56',name:'浅肤色',  rgb:[255,235,215],lab:[94.13,3.61,12.16]},
+  {id:'P57',name:'中肤色',  rgb:[238,200,175],lab:[83.22,9.77,17.52]},
+  {id:'P58',name:'深肤色',  rgb:[210,160,130],lab:[69.79,14.57,22.82]},
+  {id:'P59',name:'深棕肤',  rgb:[180,130,105],lab:[58.69,16.05,21.14]},
+  {id:'P60',name:'可可棕',  rgb:[139,90,43],  lab:[42.73,15.49,34.7]},
+  {id:'P61',name:'琥珀',    rgb:[255,191,0],  lab:[81.03,10.39,83.03]},
+  {id:'P62',name:'橘红',    rgb:[255,60,30],  lab:[56.68,70.86,60.49]},
+  {id:'P63',name:'酒红',    rgb:[139,0,42],   lab:[28.53,52.2,18.46]},
+  {id:'P64',name:'深红',    rgb:[180,0,0],    lab:[37.31,61.67,51.71]},
+  {id:'P65',name:'陶土',    rgb:[204,119,85], lab:[58.69,30,32.88]},
+  {id:'P66',name:'砖红',    rgb:[178,68,45],  lab:[43.93,43.48,36.61]},
+  {id:'P67',name:'粉红',    rgb:[255,192,203],lab:[83.59,24.14,3.33]},
+  {id:'P68',name:'薰衣草',  rgb:[230,190,255],lab:[82.31,25.83,-26.64]},
+  {id:'P69',name:'丁香',    rgb:[200,162,220],lab:[71.75,24.47,-24.1]},
+  {id:'P70',name:'深薰衣草',rgb:[150,120,180],lab:[55.29,23.54,-27.37]},
+  {id:'P71',name:'蓝紫',    rgb:[100,80,180], lab:[40.8,33.3,-50.57]},
+  {id:'P72',name:'靛蓝',    rgb:[75,0,130],   lab:[20.47,51.69,-53.31]},
+  {id:'P73',name:'宝蓝',    rgb:[0,50,200],   lab:[30.52,47.23,-79.33]},
+  {id:'P74',name:'湖蓝',    rgb:[0,150,200],  lab:[58.02,-15.21,-34.99]},
+  {id:'P75',name:'浅天蓝',  rgb:[190,225,245],lab:[87.67,-7.17,-13.52]},
+  {id:'P76',name:'冰蓝',    rgb:[200,240,255],lab:[92.49,-9.7,-11.49]},
+  {id:'P77',name:'青',      rgb:[0,200,180],  lab:[72.63,-45.84,-1.76]},
+  {id:'P78',name:'暗青',    rgb:[0,139,139],  lab:[52.21,-30.62,-9]},
+  {id:'P79',name:'橄榄绿',  rgb:[128,128,0],  lab:[51.87,-12.93,56.67]},
+  {id:'P80',name:'草绿',    rgb:[80,180,40],  lab:[65.36,-53.22,57.88]},
+  {id:'P81',name:'苹果绿',  rgb:[141,182,0],  lab:[68.84,-34.12,69.78]},
+  {id:'P82',name:'薄荷',    rgb:[189,252,201],lab:[93.73,-29.48,18.17]},
+  {id:'P83',name:'森林绿',  rgb:[34,100,34],  lab:[37.06,-35.24,30.61]},
+  {id:'P84',name:'常青绿',  rgb:[0,80,40],    lab:[29.13,-32.23,17.59]},
+  {id:'P85',name:'卡其绿',  rgb:[180,180,130],lab:[72.2,-8.08,25.59]},
+  {id:'P86',name:'浅卡其',  rgb:[210,200,170],lab:[80.69,-1.41,16.28]},
+  {id:'P87',name:'驼色',    rgb:[193,154,107],lab:[66.15,8.37,30.15]},
+  {id:'P88',name:'冷灰',    rgb:[180,185,190],lab:[74.9,-0.78,-3.13]},
+  {id:'P89',name:'暖灰',    rgb:[170,165,155],lab:[67.89,0,5.82]},
+  {id:'P90',name:'中灰',    rgb:[145,145,145],lab:[60.17,0,0]},
+  {id:'P91',name:'浅银',    rgb:[210,210,215],lab:[84.33,0.92,-2.47]},
+  {id:'P92',name:'奶油',    rgb:[255,253,208],lab:[98.46,-6.49,21.83]},
+  {id:'P93',name:'杏色',    rgb:[251,206,177],lab:[85.92,11.77,20.4]},
+  {id:'P94',name:'珊瑚',    rgb:[255,127,80], lab:[67.3,45.35,47.49]},
+  {id:'P95',name:'西瓜红',  rgb:[252,108,133],lab:[64.26,57,14.36]},
+  {id:'P96',name:'玫红',    rgb:[227,0,106],  lab:[48.73,76.91,7.9]},
+  {id:'P97',name:'桃粉',    rgb:[255,160,175],lab:[75.76,37.06,7.21]},
+  {id:'P98',name:'薄雾紫',  rgb:[210,190,210],lab:[79.15,10.6,-7.43]},
+  {id:'P99',name:'淡蓝紫',  rgb:[200,195,220],lab:[79.88,6.5,-11.81]},
+  {id:'P100',name:'珍珠',   rgb:[250,245,235],lab:[96.67,-0.04,5.4]},
+];
+const PERLER_PALETTE = FULL_PALETTE.slice(0, 55);
+
+// ============================================================================
+// CIE Lab 转换 + 匹配
+// ============================================================================
+function rgbToLab(r,g,b){
+  let rr=r/255,gg=g/255,bb=b/255;
+  const gama=c=>c>0.04045?((c+0.055)/1.055)**2.4:c/12.92;
+  rr=gama(rr);gg=gama(gg);bb=gama(bb);
+  const x=rr*0.4124564+gg*0.3575761+bb*0.1804375;
+  const y=rr*0.2126729+gg*0.7151522+bb*0.0721750;
+  const z=rr*0.0193339+gg*0.1191920+bb*0.9503041;
+  const f=t=>t>0.008856?t**(1/3):(903.3*t+16)/116;
+  const fy=f(y/1.0);
+  return{L:116*fy-16,a:500*(f(x/0.95047)-fy),b:200*(fy-f(z/1.08883))};
+}
+function deltaE(l1,l2){const dL=l1.L-l2.L,da=l1.a-l2.a,db=l1.b-l2.b;return Math.sqrt(dL*dL+da*da+db*db);}
+function findClosest(r,g,b,pal){
+  const t=rgbToLab(r,g,b);let best=null,bestDE=Infinity;
+  for(const c of pal){
+    const de=deltaE(t,{L:c.lab[0],a:c.lab[1],b:c.lab[2]});
+    if(de<bestDE){bestDE=de;best=c;}if(de<0.05)break;
+  }
+  return{...best,deltaE:Math.round(bestDE*100)/100};
+}
+
+// ============================================================================
+// 像素化 + 量化
+// ============================================================================
+function quantizeImage(img,gridSize,palette){
+  const tiny=document.createElement('canvas');
+  tiny.width=gridSize;tiny.height=gridSize;
+  const ctx=tiny.getContext('2d');
+  const src=Math.min(img.naturalWidth,img.naturalHeight);
+  const sx=(img.naturalWidth-src)/2,sy=(img.naturalHeight-src)/2;
+  ctx.drawImage(img,sx,sy,src,src,0,0,gridSize,gridSize);
+  const imgData=ctx.getImageData(0,0,gridSize,gridSize);
+  const px=imgData.data;
+  const grid=[];
+  for(let row=0;row<gridSize;row++){
+    grid[row]=[];
+    for(let col=0;col<gridSize;col++){
+      const i=(row*gridSize+col)*4;
+      grid[row][col]=findClosest(px[i],px[i+1],px[i+2],palette);
+    }
+  }
+  return grid;
+}
+
+// ============================================================================
+// Canvas 绘制 — 大画布，像素风格
+// ============================================================================
+function drawGrid(canvas,grid,gridSize,displaySize){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  canvas.width=displaySize*dpr;canvas.height=displaySize*dpr;
+  canvas.style.width=displaySize+'px';canvas.style.height=displaySize+'px';
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const cs=displaySize/gridSize;
+  const showText=cs>=6.5;
+
+  // 白底
+  ctx.fillStyle='#FFF';ctx.fillRect(0,0,displaySize,displaySize);
+
+  // 逐格
+  for(let row=0;row<gridSize;row++){
+    for(let col=0;col<gridSize;col++){
+      const c=grid[row][col];const[r,g,b]=c.rgb;
+      const x=col*cs,y=row*cs;
+      ctx.fillStyle=`rgb(${r},${g},${b})`;ctx.fillRect(x,y,cs,cs);
+      if(showText){
+        const fs=Math.max(3.2,Math.min(cs*0.38,12));
+        ctx.font=`${fs}px -apple-system,"PingFang SC",sans-serif`;
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillStyle=(0.2126*r+0.7152*g+0.0722*b)>140?'#333':'#FFF';
+        ctx.fillText(c.id,x+cs/2,y+cs/2);
+      }
+    }
+  }
+
+  // 网格线（极细）
+  ctx.strokeStyle='rgba(0,0,0,0.08)';ctx.lineWidth=0.4;
+  for(let i=0;i<=gridSize;i++){
+    const p=i*cs;
+    ctx.beginPath();ctx.moveTo(p,0);ctx.lineTo(p,displaySize);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,p);ctx.lineTo(displaySize,p);ctx.stroke();
+  }
+
+  // 外框
+  ctx.strokeStyle='rgba(0,0,0,0.2)';ctx.lineWidth=1;
+  ctx.strokeRect(0.5,0.5,displaySize-1,displaySize-1);
+}
+
+// ============================================================================
+// 统计
+// ============================================================================
+function countColors(grid){
+  const total=grid.length*grid[0].length;
+  const map=new Map();
+  for(const row of grid)for(const c of row){
+    const e=map.get(c.id);if(e)e.count++;else map.set(c.id,{id:c.id,name:c.name,count:1,rgb:c.rgb});
+  }
+  return Array.from(map.values()).map(i=>({...i,pct:((i.count/total)*100).toFixed(1)+'%'})).sort((a,b)=>b.count-a.count);
+}
+
+// ============================================================================
+// UI 状态
+// ============================================================================
+const $=id=>document.getElementById(id);
+let uploadedImage=null,currentGrid=null,currentStats=null;
+let gridSize=58,palette=FULL_PALETTE,_blobUrl=null;
+let gridButtons=[$('btnGrid29'),$('btnGrid58'),$('btnGrid72')];
+
+function toast(msg){
+  const el=$('toast');clearTimeout(el._t);
+  el.textContent=msg;el.classList.add('show');
+  el._t=setTimeout(()=>el.classList.remove('show'),2000);
+}
+
+// ---- 上传 ----
+$('btnUpload').addEventListener('click',()=>$('fileInput').click());
+$('btnCamera').addEventListener('click',()=>$('cameraInput').click());
+$('btnStartUpload').addEventListener('click',()=>$('fileInput').click());
+$('dropZone').addEventListener('click',()=>$('fileInput').click());
+$('fileInput').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
+$('cameraInput').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
+
+// 拖拽
+const dz=$('dropZone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);});
+
+function loadFile(file){
+  if(!file.type.match(/image\/(jpeg|png|webp|bmp|gif)/)){toast('请选择图片文件');return;}
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const img=new Image();
+    img.onload=()=>{
+      uploadedImage=img;
+      const thumb=$('previewThumb');
+      thumb.src=ev.target.result;thumb.style.display='block';
+      dz.querySelector('span:first-child').style.display='none';
+      dz.querySelector('span:last-child').style.display='none';
+      toast('图片已加载 ✓ 点击🔄或切换网格尺寸生成');
+      $('btnRegenerate').disabled=false;
+      generatePattern(); // 自动生成
+    };
+    img.src=ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ---- 网格尺寸 ----
+function updateGridUI(){
+  gridButtons.forEach(b=>b.classList.remove('active'));
+  const btn=document.querySelector(`.tb-btn[data-size="${gridSize}"]`);
+  if(btn)btn.classList.add('active');
+  $('gridSelect').value=gridButtons.some(b=>b.classList.contains('active'))?String(gridSize):'custom';
+  if(String(gridSize)==='custom'||![29,49,58,72].includes(gridSize))$('customGridInput').disabled=false;
+  else $('customGridInput').disabled=true;
+}
+
+gridButtons.forEach(b=>b.addEventListener('click',()=>{
+  gridSize=parseInt(b.dataset.size);
+  updateGridUI();
+  if(uploadedImage)generatePattern();
+}));
+
+$('gridSelect').addEventListener('change',function(){
+  if(this.value==='custom'){$('customGridInput').disabled=false;$('customGridInput').focus();}
+  else{gridSize=parseInt(this.value);updateGridUI();if(uploadedImage)generatePattern();}
+});
+
+$('customGridInput').addEventListener('input',function(){
+  const v=parseInt(this.value)||40;gridSize=Math.max(10,Math.min(120,v));
+});
+$('customGridInput').addEventListener('change',function(){
+  if(uploadedImage)generatePattern();
+});
+
+// ---- 色板 ----
+$('paletteSelect').addEventListener('change',function(){
+  palette=this.value==='full'?FULL_PALETTE:PERLER_PALETTE;
+  toast('色板：'+this.options[this.selectedIndex].text);
+  if(uploadedImage)generatePattern();
+});
+$('btnPalette').addEventListener('click',()=>{
+  // 快速切换
+  palette=palette===FULL_PALETTE?PERLER_PALETTE:FULL_PALETTE;
+  $('paletteSelect').value=palette===FULL_PALETTE?'full':'perler';
+  toast(palette===FULL_PALETTE?'全色板 100色':'Perler 55色');
+  if(uploadedImage)generatePattern();
+});
+
+// ---- 生成 ----
+function generatePattern(){
+  if(!uploadedImage)return;
+  if($('customGridInput').disabled===false){
+    const v=parseInt($('customGridInput').value)||40;
+    gridSize=Math.max(10,Math.min(120,v));
+  }
+
+  $('btnRegenerate').disabled=true;
+  $('btnRegenerate').textContent='⏳ 生成中...';
+
+  requestAnimationFrame(()=>{
+    try{
+      currentGrid=quantizeImage(uploadedImage,gridSize,palette);
+      currentStats=countColors(currentGrid);
+
+      // 画布：宽度填满，最大 680px
+      const maxW=Math.min(680,window.innerWidth-16);
+      drawGrid($('mainCanvas'),currentGrid,gridSize,maxW);
+
+      // 切换视图
+      $('emptyState').classList.add('hidden');
+      $('canvasStage').classList.remove('hidden');
+      $('statsStrip').classList.remove('hidden');
+      $('btnSave').disabled=false;
+
+      // 底部统计条
+      renderStats(currentStats);
+
+      // URL
+      if(_blobUrl){URL.revokeObjectURL(_blobUrl);_blobUrl=null;}
+
+      toast(`✅ ${gridSize}×${gridSize} · ${currentStats.length}色 · ${gridSize*gridSize}颗`);
+    }catch(err){
+      console.error(err);toast('生成失败');
+    }finally{
+      $('btnRegenerate').disabled=false;
+      $('btnRegenerate').textContent='🔄 重新生成';
+    }
+  });
+}
+
+$('btnRegenerate').addEventListener('click',generatePattern);
+
+function renderStats(stats){
+  const strip=$('statsStrip');
+  strip.innerHTML=stats.map(s=>`
+    <span class="stat-chip">
+      <span class="dot" style="background:rgb(${s.rgb[0]},${s.rgb[1]},${s.rgb[2]})"></span>
+      ${s.id} ${s.name} <span class="count">${s.count}</span>
+    </span>
+  `).join('');
+}
+
+// ---- 保存（生成大图 → 弹窗 → 下载/长按） ----
+function generateHiResBlob(){
+  return new Promise((resolve,reject)=>{
+    if(!currentGrid)return reject('无数据');
+    const size=gridSize*50;
+    const cvs=document.createElement('canvas');
+    drawGrid(cvs,currentGrid,gridSize,size);
+    cvs.toBlob(b=>b?resolve(b):reject('导出失败'),'image/png',1);
+  });
+}
+
+$('btnSave').addEventListener('click',async()=>{
+  if(!currentGrid)return toast('先生成图纸');
+  $('btnSave').disabled=true;$('btnSave').textContent='⏳';
+
+  try{
+    const blob=await generateHiResBlob();
+    _blobUrl=URL.createObjectURL(blob);
+
+    // 弹窗预览 + 选项
+    $('saveInfo').textContent=`${gridSize}×${gridSize} · ${currentStats.length}色 · ${gridSize*gridSize}颗`;
+    const previewCvs=$('savePreview');
+    previewCvs.style.display='block';
+    previewCvs.style.maxWidth='100%';
+    const previewSize=Math.min(280,gridSize*5);
+    drawGrid(previewCvs,currentGrid,gridSize,previewSize);
+
+    $('saveModal').classList.remove('hidden');
+    $('btnSave').textContent='💾';
+    $('btnSave').disabled=false;
+  }catch(err){
+    toast('生成失败');$('btnSave').disabled=false;$('btnSave').textContent='💾';
+  }
+});
+
+$('btnCancelSave').addEventListener('click',()=>$('saveModal').classList.add('hidden'));
+$('saveModal').addEventListener('click',e=>{if(e.target===$('saveModal'))$('saveModal').classList.add('hidden');});
+
+$('btnConfirmSave').addEventListener('click',()=>{
+  if(!_blobUrl)return;
+  const a=document.createElement('a');
+  a.href=_blobUrl;a.download=`豆豆图纸_${gridSize}x${gridSize}.png`;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  $('saveModal').classList.add('hidden');
+  toast('✅ 下载完成');
+
+  // 如果是移动端，额外打开新窗口让用户长按保存
+  if(/Mobi|Android/i.test(navigator.userAgent)){
+    setTimeout(()=>window.open(_blobUrl,'_blank'),500);
+  }
+});
+
+// ============================================================================
+// 初始
+// ============================================================================
+updateGridUI();
+console.log('🧶 豆豆图纸 · 拼豆图案生成器');
+console.log(`   色板 ${FULL_PALETTE.length} 色 | 网格 29/49/58/72/自定义`);
+console.log('   拖拽或点击上传图片即可开始 →');
+</script>
+</body>
+</html>
